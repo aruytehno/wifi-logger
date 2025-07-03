@@ -206,3 +206,4 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 /wifi_internet_issues_log.txt
+/wifi_internet_daily_log.xlsx
