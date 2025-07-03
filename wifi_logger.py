@@ -3,7 +3,14 @@ import time
 import re
 from datetime import datetime
 
+import openpyxl
+from openpyxl.chart import LineChart, Reference
+from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
+from pathlib import Path
+
 LOG_FILE = "wifi_internet_issues_log.txt"
+EXCEL_FILE = "wifi_internet_daily_log.xlsx"
 CHECK_INTERVAL = 1  # секунд
 PING_TARGET = "8.8.8.8"
 PING_TIMEOUT_MS = 1000
@@ -52,6 +59,57 @@ def log_to_file(entry):
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(full_entry + "\n")
 
+def save_to_excel(timestamp, wifi_status, ssid, signal, internet_status, latency):
+    date_str = timestamp.strftime("%d.%m.%y")
+    time_str = timestamp.strftime("%H:%M:%S")
+
+    # Открываем или создаём рабочую книгу
+    if Path(EXCEL_FILE).exists():
+        wb = openpyxl.load_workbook(EXCEL_FILE)
+    else:
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+    # Создаём лист на текущие сутки, если нет
+    if date_str not in wb.sheetnames:
+        ws = wb.create_sheet(title=date_str)
+        headers = ["Время", "Wi-Fi статус", "SSID", "Сигнал (%)", "Интернет", "Пинг (мс)"]
+        ws.append(headers)
+        for col in range(1, len(headers) + 1):
+            ws.cell(row=1, column=col).font = Font(bold=True)
+            ws.column_dimensions[get_column_letter(col)].width = 15
+    else:
+        ws = wb[date_str]
+
+    # Запись строки
+    ws.append([
+        time_str,
+        wifi_status,
+        ssid,
+        signal if signal >= 0 else "",
+        internet_status,
+        latency if latency >= 0 else ""
+    ])
+
+    # График — создаём один раз
+    if not ws._charts:
+        chart = LineChart()
+        chart.title = "Пинг (мс) по времени"
+        chart.y_axis.title = "Задержка"
+        chart.x_axis.title = "Время"
+
+        data = Reference(ws, min_col=6, min_row=1, max_row=ws.max_row)
+        cats = Reference(ws, min_col=1, min_row=2, max_row=ws.max_row)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
+        chart.height = 10
+        chart.width = 30
+        chart.style = 13
+
+        ws.add_chart(chart, "H2")
+
+    wb.save(EXCEL_FILE)
+
 def has_state_changed(wifi_status, internet_status, signal):
     global last_state
     changed = False
@@ -98,6 +156,7 @@ def main_loop():
             latency > THRESHOLD_LATENCY_MS
         ):
             log_to_file(status_line)
+            save_to_excel(datetime.now(), wifi_status, ssid, signal, internet_status, latency)
 
         time.sleep(CHECK_INTERVAL)
 
