@@ -1,12 +1,45 @@
 import subprocess
 import unittest
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 
 import wifi_logger  # Файл с основным кодом должен быть wifi_logger.py
 
 class TestWifiLogger(unittest.TestCase):
+    """
+    Набор юнит-тестов для модуля wifi_logger.
+
+    Покрытие тестами:
+    - log_to_file():
+        Проверяется создание лог-файла и корректная запись текстовой строки.
+    - save_to_excel():
+        Проверяется:
+            * создание Excel-файла;
+            * создание листа с текущей датой;
+            * добавление одной или нескольких строк данных;
+            * корректность значений в ячейках;
+            * создание линейного графика по пингу.
+    - get_wifi_status():
+        Через мок проверяется корректный парсинг вывода команды netsh wlan show interfaces,
+        включая состояние подключения, SSID и уровень сигнала.
+    - ping_latency():
+        Проверяются оба случая:
+            * успешный пинг с возвратом значения времени;
+            * неудачный пинг с возвратом -1.
+    - has_state_changed():
+        Проверяется обнаружение изменения состояния Wi-Fi, интернета и уровня сигнала;
+        а также отсутствие реакции на незначительные отклонения сигнала.
+
+    Дополнительно:
+    - Проверяется добавление нескольких строк в Excel, чтобы удостовериться,
+      что данные не перезаписываются при повторной записи в течение суток.
+
+    Ограничения:
+    - Цикл мониторинга в main_loop() не тестируется напрямую, так как требует
+      рефакторинга под тестируемые подфункции.
+    """
+
     def setUp(self):
         """Удаляем файлы лога и Excel перед каждым тестом, чтобы тесты были изолированы."""
         self.test_time = datetime(2025, 7, 3, 12, 0, 0)
@@ -124,6 +157,23 @@ class TestWifiLogger(unittest.TestCase):
         }
         changed = wifi_logger.has_state_changed("connected", "online", 92)
         self.assertFalse(changed)
+
+    def test_multiple_entries_append(self):
+        """
+        Проверяет, что функция save_to_excel корректно добавляет новые строки,
+        не перезаписывая существующие. После двух вызовов должны быть записаны
+        две строки данных (плюс строка заголовков).
+        """
+        times = [self.test_time, self.test_time + timedelta(seconds=10)]
+        for t in times:
+            wifi_logger.save_to_excel(t, "connected", "SSID", 50, "online", 30)
+
+        from openpyxl import load_workbook
+        wb = load_workbook(self.excel_file)
+        ws = wb[self.test_time.strftime("%d.%m.%y")]
+
+        # должно быть две строки данных + заголовок
+        self.assertEqual(ws.max_row, 3)
 
 
 if __name__ == "__main__":
