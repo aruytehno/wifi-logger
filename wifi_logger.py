@@ -8,7 +8,13 @@ CHECK_INTERVAL = 1  # секунд
 PING_TARGET = "8.8.8.8"
 PING_TIMEOUT_MS = 1000
 THRESHOLD_LATENCY_MS = 500
-THRESHOLD_SIGNAL_PERCENT = 30  # Считаем сигнал слабым ниже этого уровня
+THRESHOLD_SIGNAL_PERCENT = 30
+
+last_state = {
+    "wifi_status": None,
+    "internet_status": None,
+    "signal": None
+}
 
 def get_wifi_status():
     try:
@@ -34,11 +40,11 @@ def ping_latency(host=PING_TARGET):
         if "TTL=" in output:
             match = re.search(r"time[=<]?\s*(\d+)ms", output)
             if match:
-                return int(match.group(1))  # задержка в мс
+                return int(match.group(1))
             return 0
         return -1
     except subprocess.CalledProcessError:
-        return -1  # означает timeout
+        return -1
 
 def log_to_file(entry):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -46,33 +52,52 @@ def log_to_file(entry):
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(full_entry + "\n")
 
+def has_state_changed(wifi_status, internet_status, signal):
+    global last_state
+    changed = False
+    if (wifi_status != last_state["wifi_status"] or
+        internet_status != last_state["internet_status"] or
+        (last_state["signal"] is not None and abs(signal - last_state["signal"]) >= 5)):
+        changed = True
+    last_state["wifi_status"] = wifi_status
+    last_state["internet_status"] = internet_status
+    last_state["signal"] = signal
+    return changed
+
 def main_loop():
     print("🔍 Старт мониторинга Wi-Fi и интернета...\n")
 
     while True:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Получаем Wi-Fi статус
+        # Wi-Fi
         wifi_status, ssid, signal = get_wifi_status()
+        signal_display = f"{signal}%" if signal >= 0 else "N/A"
 
-        # Получаем задержку пинга
+        # Пинг
         latency = ping_latency()
-
-        # Определяем статусы
         internet_status = "online" if latency >= 0 else "offline"
-        log_line = f"[{timestamp}] Wi-Fi: {wifi_status}, SSID: {ssid}, Signal: {signal}%, Internet: {internet_status}, Ping: {latency if latency >= 0 else 'timeout'} ms"
+        ping_display = f"{latency} ms" if latency >= 0 else "timeout"
 
-        # Печатаем всегда
-        print(log_line)
+        # Формируем строку
+        status_line = (
+            f"Wi-Fi: {wifi_status}, "
+            f"SSID: {ssid}, "
+            f"Signal: {signal_display}, "
+            f"Internet: {internet_status}, "
+            f"Ping: {ping_display}"
+        )
 
-        # Логируем в файл, если что-то не так
+        print(status_line)
+
+        # Логируем только если:
+        # - состояние изменилось (Wi-Fi / Internet)
+        # - плохой сигнал
+        # - плохой пинг
         if (
-            wifi_status.lower() != "connected"
-            or signal < THRESHOLD_SIGNAL_PERCENT
-            or latency < 0
-            or latency > THRESHOLD_LATENCY_MS
+            has_state_changed(wifi_status, internet_status, signal) or
+            signal < THRESHOLD_SIGNAL_PERCENT or
+            latency > THRESHOLD_LATENCY_MS
         ):
-            log_to_file(log_line)
+            log_to_file(status_line)
 
         time.sleep(CHECK_INTERVAL)
 
