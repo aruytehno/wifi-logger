@@ -1,3 +1,4 @@
+import subprocess
 import unittest
 from unittest.mock import patch
 from datetime import datetime
@@ -78,7 +79,7 @@ class TestWifiLogger(unittest.TestCase):
         latency = wifi_logger.ping_latency()
         self.assertEqual(latency, 42)
 
-    @patch("wifi_logger.subprocess.check_output", side_effect=Exception("Timeout"))
+    @patch("wifi_logger.subprocess.check_output", side_effect=subprocess.CalledProcessError(1, "ping"))
     def test_ping_latency_failure(self, mock_subprocess):
         latency = wifi_logger.ping_latency()
         self.assertEqual(latency, -1)
