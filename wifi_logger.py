@@ -148,8 +148,6 @@ def main_loop():
 
         print(status_line)
 
-        print(status_line)
-
         # Логируем только если:
         # - состояние изменилось (Wi-Fi / Internet)
         # - плохой сигнал
