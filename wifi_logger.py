@@ -136,10 +136,10 @@ def main_loop():
         ping_display = f"{latency} ms" if latency >= 0 else "timeout"
 
         # Формируем строку
-        now_str = datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         status_line = (
-            f"[{now_str}] Wi-Fi: {wifi_status}, "
+            f"[{timestamp}] Wi-Fi: {wifi_status}, "
             f"SSID: {ssid}, "
             f"Signal: {signal_display}, "
             f"Internet: {internet_status}, "
