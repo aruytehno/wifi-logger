@@ -8,23 +8,24 @@ import wifi_logger  # Файл с основным кодом должен бы�
 
 class TestWifiLogger(unittest.TestCase):
     def setUp(self):
+        """Удаляем файлы лога и Excel перед каждым тестом, чтобы тесты были изолированы."""
         self.test_time = datetime(2025, 7, 3, 12, 0, 0)
         self.test_entry = "Wi-Fi: connected, SSID: TestSSID, Signal: 99%, Internet: online, Ping: 23 ms"
         self.log_file = wifi_logger.LOG_FILE
         self.excel_file = wifi_logger.EXCEL_FILE
 
-        # Удаляем файлы перед тестом
         for f in [self.log_file, self.excel_file]:
             if os.path.exists(f):
                 os.remove(f)
 
     def tearDown(self):
-        # Удаляем файлы после теста
+        """Удаляем файлы лога и Excel после каждого теста для чистоты окружения."""
         for f in [self.log_file, self.excel_file]:
             if os.path.exists(f):
                 os.remove(f)
 
     def test_log_to_file_creates_and_logs_entry(self):
+        """Проверяет, что функция log_to_file создает файл и записывает в него правильную строку."""
         wifi_logger.log_to_file(self.test_entry)
         self.assertTrue(os.path.exists(self.log_file))
 
@@ -33,6 +34,10 @@ class TestWifiLogger(unittest.TestCase):
             self.assertIn(self.test_entry, content)
 
     def test_save_to_excel_creates_file_and_sheet(self):
+        """
+        Проверяет создание Excel файла, листа с правильным названием (датой),
+        корректную запись данных и добавление графика.
+        """
         wifi_logger.save_to_excel(
             self.test_time,
             "connected",
@@ -51,18 +56,22 @@ class TestWifiLogger(unittest.TestCase):
 
         ws = wb[sheetname]
 
-        # Проверка данных
+        # Проверка корректности записанных данных
         self.assertEqual(ws.cell(row=2, column=2).value, "connected")
         self.assertEqual(ws.cell(row=2, column=3).value, "TestSSID")
         self.assertEqual(ws.cell(row=2, column=4).value, 99)
         self.assertEqual(ws.cell(row=2, column=5).value, "online")
         self.assertEqual(ws.cell(row=2, column=6).value, 23)
 
-        # Проверка, что график создан
+        # Проверка, что график создан на листе
         self.assertTrue(ws._charts)
 
     @patch("wifi_logger.subprocess.check_output")
     def test_get_wifi_status_parsing(self, mock_subprocess):
+        """
+        Тестирует функцию get_wifi_status на корректный парсинг вывода команды netsh wlan show interfaces.
+        Проверяет правильное извлечение статуса, SSID и уровня сигнала.
+        """
         mock_subprocess.return_value = (
             "State : connected\n"
             "SSID : TestNet\n"
@@ -75,16 +84,26 @@ class TestWifiLogger(unittest.TestCase):
 
     @patch("wifi_logger.subprocess.check_output")
     def test_ping_latency_success(self, mock_subprocess):
+        """
+        Проверяет успешный разбор пинга, когда в выводе содержится TTL и время отклика.
+        """
         mock_subprocess.return_value = "Reply from 8.8.8.8: bytes=32 time=42ms TTL=55"
         latency = wifi_logger.ping_latency()
         self.assertEqual(latency, 42)
 
     @patch("wifi_logger.subprocess.check_output", side_effect=subprocess.CalledProcessError(1, "ping"))
     def test_ping_latency_failure(self, mock_subprocess):
+        """
+        Проверяет, что при ошибке выполнения команды ping функция возвращает -1.
+        """
         latency = wifi_logger.ping_latency()
         self.assertEqual(latency, -1)
 
     def test_has_state_changed_true(self):
+        """
+        Проверяет, что функция has_state_changed корректно выявляет изменение состояний
+        Wi-Fi, интернета или значительное изменение сигнала.
+        """
         wifi_logger.last_state = {
             "wifi_status": "connected",
             "internet_status": "online",
@@ -94,6 +113,10 @@ class TestWifiLogger(unittest.TestCase):
         self.assertTrue(changed)
 
     def test_has_state_changed_false(self):
+        """
+        Проверяет, что функция has_state_changed не отмечает изменения,
+        если состояние не изменилось и изменение сигнала меньше 5%.
+        """
         wifi_logger.last_state = {
             "wifi_status": "connected",
             "internet_status": "online",
