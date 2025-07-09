@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 
 import openpyxl
+from openpyxl import load_workbook, Workbook
 from openpyxl.chart import LineChart, Reference
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
@@ -58,6 +59,47 @@ def log_to_file(entry):
     full_entry = f"[{timestamp}] {entry}"
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(full_entry + "\n")
+
+def save_failure_to_hourly_excel(timestamp):
+    """
+    Фиксирует сбой, увеличивая счётчик в соответствующем часу.
+    Сохраняет в файл вида wifi_log_DD.MM.YY.xlsx на лист 'Сбои',
+    где фиксируется число сбоев по каждому часу.
+    """
+    date_str = timestamp.strftime("%d.%m.%y")
+    filename = f"wifi_log_{date_str}.xlsx"
+    hour = timestamp.hour
+
+    if Path(filename).exists():
+        wb = load_workbook(filename)
+    else:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Сбои"
+        ws.append(["Час", "Количество сбоев"])
+        for h in range(24):
+            ws.append([h, 0])
+        ws["A1"].font = ws["B1"].font = Font(bold=True)
+
+        # Добавим график
+        chart = LineChart()
+        chart.title = "Частота сбоев по часам"
+        chart.x_axis.title = "Час суток"
+        chart.y_axis.title = "Сбои"
+        data = Reference(ws, min_col=2, min_row=1, max_row=25)
+        cats = Reference(ws, min_col=1, min_row=2, max_row=25)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(cats)
+        chart.style = 13
+        chart.height = 10
+        chart.width = 30
+        ws.add_chart(chart, "D2")
+
+    ws = wb["Сбои"]
+    count_cell = ws.cell(row=hour + 2, column=2)  # +2 из-за заголовка
+    count_cell.value = (count_cell.value or 0) + 1
+
+    wb.save(filename)
 
 def save_to_excel(timestamp, wifi_status, ssid, signal, internet_status, latency):
     date_str = timestamp.strftime("%d.%m.%y")
@@ -153,12 +195,12 @@ def main_loop():
         # - плохой сигнал
         # - плохой пинг
         if (
-            has_state_changed(wifi_status, internet_status, signal) or
-            signal < THRESHOLD_SIGNAL_PERCENT or
-            latency > THRESHOLD_LATENCY_MS
+                has_state_changed(wifi_status, internet_status, signal) or
+                signal < THRESHOLD_SIGNAL_PERCENT or
+                latency > THRESHOLD_LATENCY_MS
         ):
             log_to_file(status_line)
-            save_to_excel(datetime.now(), wifi_status, ssid, signal, internet_status, latency)
+            save_failure_to_hourly_excel(datetime.now())  # вот это новое
 
         time.sleep(CHECK_INTERVAL)
 
